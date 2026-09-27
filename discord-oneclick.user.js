@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.7
+// @version      3.5.8
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -386,104 +386,109 @@
 
     // --- ボタンの自動生成（先頭画像フロート対応） ---
 
-    function processLink(link) {
-        if (!document.body.contains(link)) return;
-
-        const isImageWrapper = Boolean(link.closest('.imageWrapper') || link.closest('.visualMediaItemContainer_f4758a') || link.getAttribute('data-role') === 'img');
-        
-        // 挿入先ラッパーの決定と重複チェック
-        let targetWrapper = link.parentElement;
-        if (isImageWrapper) {
-            // Discordの難読化クラス名に依存せず、「画像ラッパーの直接の親要素（レイアウト枠）」を基準にする
-            const imageNode = link.closest('.imageWrapper') || link.closest('.visualMediaItemContainer_f4758a') || link;
-            targetWrapper = imageNode.parentElement || imageNode;
-        }
-        if (targetWrapper && targetWrapper.querySelector(':scope > .discord-rename-btn')) return;
-
-        const attId = extractAttachmentId(link.href);
-        const isDownloaded = Boolean(getDownloadRecord(attId));
-
-        const btn = document.createElement('button');
-        btn.className = 'discord-rename-btn';
-        btn.textContent = isDownloaded ? '✔ 済' : '📥 フォルダ保存';
-        btn.title = isDownloaded
-            ? 'ダウンロード済みです（クリックで強制再ダウンロード）'
-            : 'サーバー/チャンネル/スレッドの階層フォルダに日時付きで自動保存します';
-
-        // スタイリングの分岐（画像用フロート表示 vs 通常リンク横表示）
-        if (isImageWrapper) {
-            btn.style.cssText = `
-                position: absolute;
-                top: 8px;
-                left: 8px;
-                z-index: 10000;
-                padding: 3px 8px;
-                font-size: 11px;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-                backdrop-filter: blur(2px);
-                transition: background 0.15s, transform 0.1s;
-            `;
-            // 親ラッパーに relative を保証
-            if (targetWrapper) {
-                const compPos = window.getComputedStyle(targetWrapper).position;
-                if (compPos === 'static') {
-                    targetWrapper.style.position = 'relative';
-                }
+    // Reactの再描画（Hydration）によってインラインの style="position: relative" が
+    // 吹き飛ばされてしまうのを防ぐため、専用のCSSクラスを定義しておく
+    if (!document.getElementById('discord-rename-styles')) {
+        const style = document.createElement('style');
+        style.id = 'discord-rename-styles';
+        style.textContent = `
+            .discord-rename-target {
+                position: relative !important;
             }
-        } else {
-            btn.style.cssText = `
-                margin-left: 8px;
-                padding: 1px 6px;
-                font-size: 11px;
-                font-weight: bold;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-                vertical-align: middle;
-                z-index: 999;
-                transition: background 0.15s;
-            `;
-        }
-
-        if (isDownloaded) {
-            applyDownloadedStyle(btn);
-        } else {
-            btn.style.backgroundColor = isImageWrapper ? 'rgba(35, 165, 90, 0.92)' : '#23a55a';
-            btn.style.color = '#ffffff';
-            btn.onmouseenter = () => { btn.style.backgroundColor = '#1a8347'; };
-            btn.onmouseleave = () => { btn.style.backgroundColor = isImageWrapper ? 'rgba(35, 165, 90, 0.92)' : '#23a55a'; };
-        }
-
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            handleDownloadRequest(link, btn);
-        }, true);
-
-        // DOM挿入位置の決定（画像ならクロップ枠の先頭へ、通常ならリンク直後へ）
-        if (isImageWrapper && targetWrapper) {
-            targetWrapper.appendChild(btn);
-        } else {
-            link.insertAdjacentElement('afterend', btn);
-        }
+        `;
+        document.head.appendChild(style);
     }
 
     function injectButtons() {
-        const links = document.querySelectorAll('a[href*="cdn.discordapp.com/attachments/"]:not([data-rename-ready]):not([data-rename-pending]), a[href*="media.discordapp.net/attachments/"]:not([data-rename-ready]):not([data-rename-pending])');
+        const links = document.querySelectorAll('a[href*="cdn.discordapp.com/attachments/"], a[href*="media.discordapp.net/attachments/"]');
 
         links.forEach(link => {
-            link.setAttribute('data-rename-pending', 'true');
-            setTimeout(() => {
-                if (!document.body.contains(link)) return;
+            const isImageWrapper = Boolean(link.closest('.imageWrapper') || link.closest('.visualMediaItemContainer_f4758a') || link.getAttribute('data-role') === 'img');
+            
+            // 挿入先ラッパーの決定
+            let targetWrapper = link.parentElement;
+            if (isImageWrapper) {
+                // v3.5.4 で実績のある外枠優先探索ロジックを復元
+                targetWrapper = link.closest('[class*="mosaicItem"]') || link.closest('[class*="messageAttachment"]') || link.closest('[class*="attachment_"]') || link.closest('.imageWrapper') || link.closest('.imageContainer__0f481') || link.parentElement;
+            }
+
+            // Reactの再描画でクラスが消された場合は、何度でも付け直す（見切れ防止の要）
+            if (isImageWrapper && targetWrapper && !targetWrapper.classList.contains('discord-rename-target')) {
+                targetWrapper.classList.add('discord-rename-target');
+            }
+
+            if (link.getAttribute('data-rename-ready') === 'true') return;
+            if (targetWrapper && targetWrapper.querySelector(':scope > .discord-rename-btn')) {
                 link.setAttribute('data-rename-ready', 'true');
-                link.removeAttribute('data-rename-pending');
-                processLink(link);
-            }, 500);
+                return;
+            }
+
+            link.setAttribute('data-rename-ready', 'true');
+
+            const attId = extractAttachmentId(link.href);
+            const isDownloaded = Boolean(getDownloadRecord(attId));
+
+            const btn = document.createElement('button');
+            btn.className = 'discord-rename-btn';
+            btn.textContent = isDownloaded ? '✔ 済' : '📥 フォルダ保存';
+            btn.title = isDownloaded
+                ? 'ダウンロード済みです（クリックで強制再ダウンロード）'
+                : 'サーバー/チャンネル/スレッドの階層フォルダに日時付きで自動保存します';
+
+            // スタイリングの分岐（画像用フロート表示 vs 通常リンク横表示）
+            if (isImageWrapper) {
+                btn.style.cssText = `
+                    position: absolute;
+                    top: 8px;
+                    left: 8px;
+                    z-index: 10000;
+                    padding: 3px 8px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+                    backdrop-filter: blur(2px);
+                    transition: background 0.15s, transform 0.1s;
+                `;
+            } else {
+                btn.style.cssText = `
+                    margin-left: 8px;
+                    padding: 1px 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    border: none;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    vertical-align: middle;
+                    z-index: 999;
+                    transition: background 0.15s;
+                `;
+            }
+
+            if (isDownloaded) {
+                applyDownloadedStyle(btn);
+            } else {
+                btn.style.backgroundColor = isImageWrapper ? 'rgba(35, 165, 90, 0.92)' : '#23a55a';
+                btn.style.color = '#ffffff';
+                btn.onmouseenter = () => { btn.style.backgroundColor = '#1a8347'; };
+                btn.onmouseleave = () => { btn.style.backgroundColor = isImageWrapper ? 'rgba(35, 165, 90, 0.92)' : '#23a55a'; };
+            }
+
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                handleDownloadRequest(link, btn);
+            }, true);
+
+            // DOM挿入位置の決定（画像ならクロップ枠の先頭へ、通常ならリンク直後へ）
+            if (isImageWrapper && targetWrapper) {
+                targetWrapper.appendChild(btn);
+            } else {
+                link.insertAdjacentElement('afterend', btn);
+            }
         });
     }
 
