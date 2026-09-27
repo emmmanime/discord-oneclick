@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.3
+// @version      3.5.4
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -392,11 +392,16 @@
         links.forEach(link => {
             link.setAttribute('data-rename-ready', 'true');
 
-            // 既にボタンが同階層にあればスキップ
-            const parent = link.parentElement;
-            if (parent && parent.querySelector(':scope > .discord-rename-btn')) return;
-
             const isImageWrapper = Boolean(link.closest('.imageWrapper') || link.closest('.visualMediaItemContainer_f4758a') || link.getAttribute('data-role') === 'img');
+            
+            // 挿入先ラッパーの決定と重複チェック
+            let targetWrapper = link.parentElement;
+            if (isImageWrapper) {
+                // 画像がクロップ（overflow: hidden）される外枠（mosaicItem等）を優先して基準にする
+                targetWrapper = link.closest('[class*="mosaicItem"]') || link.closest('[class*="attachment_"]') || link.closest('.imageWrapper') || link.closest('.imageContainer__0f481') || link.parentElement;
+            }
+            if (targetWrapper && targetWrapper.querySelector(':scope > .discord-rename-btn')) return;
+
             const attId = extractAttachmentId(link.href);
             const isDownloaded = Boolean(getDownloadRecord(attId));
 
@@ -411,8 +416,8 @@
             if (isImageWrapper) {
                 btn.style.cssText = `
                     position: absolute;
-                    top: 16px;
-                    left: 16px;
+                    top: 8px;
+                    left: 8px;
                     z-index: 10000;
                     padding: 3px 8px;
                     font-size: 11px;
@@ -425,11 +430,10 @@
                     transition: background 0.15s, transform 0.1s;
                 `;
                 // 親ラッパーに relative を保証
-                const wrapper = link.closest('.imageWrapper') || link.closest('.imageContainer__0f481') || parent;
-                if (wrapper) {
-                    const compPos = window.getComputedStyle(wrapper).position;
+                if (targetWrapper) {
+                    const compPos = window.getComputedStyle(targetWrapper).position;
                     if (compPos === 'static') {
-                        wrapper.style.position = 'relative';
+                        targetWrapper.style.position = 'relative';
                     }
                 }
             } else {
@@ -463,10 +467,9 @@
                 handleDownloadRequest(link, btn);
             }, true);
 
-            // DOM挿入位置の決定（画像ならラッパー内にappendChild、通常ファイルなら直後に配置）
-            if (isImageWrapper) {
-                const wrapper = link.closest('.imageWrapper') || link.closest('.imageContainer__0f481') || parent;
-                wrapper.appendChild(btn);
+            // DOM挿入位置の決定（画像ならクロップ枠の先頭へ、通常ならリンク直後へ）
+            if (isImageWrapper && targetWrapper) {
+                targetWrapper.appendChild(btn);
             } else {
                 link.insertAdjacentElement('afterend', btn);
             }
