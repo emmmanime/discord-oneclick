@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.6
+// @version      3.5.7
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -394,8 +394,9 @@
         // 挿入先ラッパーの決定と重複チェック
         let targetWrapper = link.parentElement;
         if (isImageWrapper) {
-            // 画像がクロップ（overflow: hidden）される外枠（mosaicItem等）を優先して基準にする
-            targetWrapper = link.closest('[class*="mosaicItem"]') || link.closest('[class*="attachment_"]') || link.closest('.imageWrapper') || link.closest('.imageContainer__0f481') || link.parentElement;
+            // Discordの難読化クラス名に依存せず、「画像ラッパーの直接の親要素（レイアウト枠）」を基準にする
+            const imageNode = link.closest('.imageWrapper') || link.closest('.visualMediaItemContainer_f4758a') || link;
+            targetWrapper = imageNode.parentElement || imageNode;
         }
         if (targetWrapper && targetWrapper.querySelector(':scope > .discord-rename-btn')) return;
 
@@ -476,14 +477,13 @@
         const links = document.querySelectorAll('a[href*="cdn.discordapp.com/attachments/"]:not([data-rename-ready]):not([data-rename-pending]), a[href*="media.discordapp.net/attachments/"]:not([data-rename-ready]):not([data-rename-pending])');
 
         links.forEach(link => {
-            // SPAのDOM構築遅延（Reactのモザイクレイアウト等）に対応するため、処理を少し遅らせる
             link.setAttribute('data-rename-pending', 'true');
             setTimeout(() => {
                 if (!document.body.contains(link)) return;
                 link.setAttribute('data-rename-ready', 'true');
                 link.removeAttribute('data-rename-pending');
                 processLink(link);
-            }, 3000); // テスト用に3000ms（3秒）の極端な遅延を設定
+            }, 500);
         });
     }
 
