@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.1
+// @version      3.5.2
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -235,6 +235,24 @@
 
     function getCleanFileName(linkElement) {
         let name = (linkElement.textContent || '').trim();
+
+        // テキストが空の場合（ダウンロードアイコン等の <a> タグ）、同じ添付ファイル枠内の fileNameLink を探す
+        if (!name || name.length > 200 || !name.includes('.')) {
+            const container = linkElement.closest('[class*="attachment_"], [class*="messageListItem_"], [role="article"]');
+            if (container) {
+                const nameNode = container.querySelector('[class*="fileNameLink"]');
+                if (nameNode && nameNode.textContent) {
+                    name = nameNode.textContent.trim();
+                }
+            }
+        }
+
+        // それでも無効なら aria-label などの属性を試す
+        if (!name || name.length > 200 || !name.includes('.')) {
+            name = (linkElement.getAttribute('aria-label') || linkElement.title || '').trim();
+        }
+
+        // 最終手段としてURLから推測（Discord側の省略ファイル名になる可能性あり）
         if (!name || name.length > 200 || !name.includes('.')) {
             try {
                 const url = new URL(linkElement.href);
