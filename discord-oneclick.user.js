@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.8
+// @version      3.5.9
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -408,8 +408,12 @@
             // 挿入先ラッパーの決定
             let targetWrapper = link.parentElement;
             if (isImageWrapper) {
-                // v3.5.4 で実績のある外枠優先探索ロジックを復元
-                targetWrapper = link.closest('[class*="mosaicItem"]') || link.closest('[class*="messageAttachment"]') || link.closest('[class*="attachment_"]') || link.closest('.imageWrapper') || link.closest('.imageContainer__0f481') || link.parentElement;
+                // 部分一致の罠（mosaicItemContent 等の中身コンテナ）を回避し、本当の外枠（hideOverflowを持つ mosaicItem 等）を確実につかむ
+                targetWrapper = link.closest('[class*="mosaicItem"]:not([class*="Content"])') || 
+                                link.closest('[class*="messageAttachment"]:not([class*="Content"])') || 
+                                link.closest('[class*="attachment_"]:not([class*="Content"])') || 
+                                link.closest('.imageWrapper') || 
+                                link.parentElement;
             }
 
             // Reactの再描画でクラスが消された場合は、何度でも付け直す（見切れ防止の要）
