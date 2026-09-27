@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.2
+// @version      3.5.3
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -411,8 +411,8 @@
             if (isImageWrapper) {
                 btn.style.cssText = `
                     position: absolute;
-                    top: 8px;
-                    left: 8px;
+                    top: 16px;
+                    left: 16px;
                     z-index: 10000;
                     padding: 3px 8px;
                     font-size: 11px;
