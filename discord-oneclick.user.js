@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.5.10
+// @version      3.6.0
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -22,14 +22,20 @@
     const BASE_FOLDER = 'Discord';
     const STORAGE_KEY = 'discord_download_history_v1';
     const CONFIG_CLEANSING_KEY = 'config_enable_cleansing';
+    const CONFIG_FORMAT_KEY = 'config_filename_format'; // 1: Prefix, 2: Suffix
 
-    // クレンジング機能の有効/無効判定（デフォルト: true）
+    // 古いWin32アプリ互換ファイル名化機能の有効/無効判定（デフォルト: true）
     function isCleansingEnabled() {
         return GM_getValue(CONFIG_CLEANSING_KEY, true);
     }
 
+    // ファイル名書式の取得（デフォルト: 1）
+    function getFilenameFormat() {
+        return GM_getValue(CONFIG_FORMAT_KEY, 1);
+    }
+
     /**
-     * 文字列サニタイズ処理（name2win v1.4.1 と 100% 同期）
+     * 文字列サニタイズ処理（古いWin32アプリ互換ファイル名化）
      */
     function sanitizeName(name) {
         if (!name) return '';
@@ -276,8 +282,25 @@
         }
 
         const postDate = extractMessageDate(linkElement);
-        const datePrefix = formatFileTimestamp(postDate);
-        const fileName = `${datePrefix}_${getCleanFileName(linkElement)}`;
+        const dateStr = formatFileTimestamp(postDate);
+        const baseName = getCleanFileName(linkElement);
+        const formatOption = getFilenameFormat();
+        
+        let fileName = '';
+        if (formatOption === 2) {
+            // ファイル名_タイムスタンプ.* の形式
+            const lastDot = baseName.lastIndexOf('.');
+            if (lastDot !== -1 && lastDot > 0) {
+                const namePart = baseName.substring(0, lastDot);
+                const extPart = baseName.substring(lastDot);
+                fileName = `${namePart}_${dateStr}${extPart}`;
+            } else {
+                fileName = `${baseName}_${dateStr}`;
+            }
+        } else {
+            // デフォルト: タイムスタンプ_ファイル名.* の形式
+            fileName = `${dateStr}_${baseName}`;
+        }
 
         const pathParts = [];
         if (BASE_FOLDER) pathParts.push(BASE_FOLDER);
@@ -292,7 +315,7 @@
             channelName,
             threadName: finalThreadFolder,
             threadId,
-            postDateStr: datePrefix,
+            postDateStr: dateStr,
             fileName
         };
     }
@@ -516,10 +539,20 @@
     // 0. クレンジング機能のON/OFF切り替えメニュー
     const currentCleansing = isCleansingEnabled();
     const toggleLabel = currentCleansing ? '【有効】 (クリックで無効化)' : '【無効】 (クリックで有効化)';
-    GM_registerMenuCommand(`⚙️ クレンジング (name2win互換): ${toggleLabel}`, () => {
+    GM_registerMenuCommand(`⚙️ 古いWin32互換ファイル名化: ${toggleLabel}`, () => {
         const nextState = !currentCleansing;
         GM_setValue(CONFIG_CLEANSING_KEY, nextState);
-        alert(`クレンジング機能を ${nextState ? '【有効】' : '【無効】'} に切り替えました。\nページをリロードして反映します。`);
+        alert(`Win32互換ファイル名化（クレンジング）機能を ${nextState ? '【有効】' : '【無効】'} に切り替えました。\nページをリロードして反映します。`);
+        location.reload();
+    });
+
+    // ファイル名書式の切り替えメニュー
+    const currentFormat = getFilenameFormat();
+    const formatLabel = currentFormat === 1 ? '1 (日付_ファイル名)' : '2 (ファイル名_日付)';
+    GM_registerMenuCommand(`📝 ファイル名書式: ${formatLabel}`, () => {
+        const nextFormat = currentFormat === 1 ? 2 : 1;
+        GM_setValue(CONFIG_FORMAT_KEY, nextFormat);
+        alert(`ファイル名書式を「${nextFormat === 1 ? '日付_ファイル名.*' : 'ファイル名_日付.*'}」に切り替えました。\nページをリロードして反映します。`);
         location.reload();
     });
 
