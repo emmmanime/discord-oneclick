@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.6.0
+// @version      3.6.1
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -287,8 +287,11 @@
         const formatOption = getFilenameFormat();
         
         let fileName = '';
-        if (formatOption === 2) {
-            // ファイル名_タイムスタンプ.* の形式
+        if (formatOption === 3) {
+            // オプション3: 日付なし（元のファイル名のみ）
+            fileName = baseName;
+        } else if (formatOption === 2) {
+            // オプション2: ファイル名_タイムスタンプ.* の形式
             const lastDot = baseName.lastIndexOf('.');
             if (lastDot !== -1 && lastDot > 0) {
                 const namePart = baseName.substring(0, lastDot);
@@ -298,7 +301,7 @@
                 fileName = `${baseName}_${dateStr}`;
             }
         } else {
-            // デフォルト: タイムスタンプ_ファイル名.* の形式
+            // オプション1（デフォルト）: タイムスタンプ_ファイル名.* の形式
             fileName = `${dateStr}_${baseName}`;
         }
 
@@ -548,11 +551,19 @@
 
     // ファイル名書式の切り替えメニュー
     const currentFormat = getFilenameFormat();
-    const formatLabel = currentFormat === 1 ? '1 (日付_ファイル名)' : '2 (ファイル名_日付)';
+    let formatLabel = '1 (日付_ファイル名)';
+    if (currentFormat === 2) formatLabel = '2 (ファイル名_日付)';
+    if (currentFormat === 3) formatLabel = '3 (ファイル名のみ)';
+    
     GM_registerMenuCommand(`📝 ファイル名書式: ${formatLabel}`, () => {
-        const nextFormat = currentFormat === 1 ? 2 : 1;
+        const nextFormat = currentFormat === 1 ? 2 : (currentFormat === 2 ? 3 : 1);
         GM_setValue(CONFIG_FORMAT_KEY, nextFormat);
-        alert(`ファイル名書式を「${nextFormat === 1 ? '日付_ファイル名.*' : 'ファイル名_日付.*'}」に切り替えました。\nページをリロードして反映します。`);
+        
+        let nextLabel = '日付_ファイル名.*';
+        if (nextFormat === 2) nextLabel = 'ファイル名_日付.*';
+        if (nextFormat === 3) nextLabel = 'ファイル名のみ (日付なし)';
+        
+        alert(`ファイル名書式を「${nextLabel}」に切り替えました。\nページをリロードして反映します。`);
         location.reload();
     });
 
