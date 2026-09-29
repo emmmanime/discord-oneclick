@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.6.1
+// @version      3.6.2
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -549,22 +549,23 @@
         location.reload();
     });
 
-    // ファイル名書式の切り替えメニュー
+    // ファイル名書式の切り替えメニュー（ラジオボタン風）
     const currentFormat = getFilenameFormat();
-    let formatLabel = '1 (日付_ファイル名)';
-    if (currentFormat === 2) formatLabel = '2 (ファイル名_日付)';
-    if (currentFormat === 3) formatLabel = '3 (ファイル名のみ)';
-    
-    GM_registerMenuCommand(`📝 ファイル名書式: ${formatLabel}`, () => {
-        const nextFormat = currentFormat === 1 ? 2 : (currentFormat === 2 ? 3 : 1);
-        GM_setValue(CONFIG_FORMAT_KEY, nextFormat);
-        
-        let nextLabel = '日付_ファイル名.*';
-        if (nextFormat === 2) nextLabel = 'ファイル名_日付.*';
-        if (nextFormat === 3) nextLabel = 'ファイル名のみ (日付なし)';
-        
-        alert(`ファイル名書式を「${nextLabel}」に切り替えました。\nページをリロードして反映します。`);
-        location.reload();
+    const formats = [
+        { id: 1, label: '日付_ファイル名.*' },
+        { id: 2, label: 'ファイル名_日付.*' },
+        { id: 3, label: 'ファイル名のみ (日付なし)' }
+    ];
+
+    formats.forEach(f => {
+        const isCurrent = (currentFormat === f.id);
+        const icon = isCurrent ? '🔘' : '⚪';
+        GM_registerMenuCommand(`${icon} 書式: ${f.label}`, () => {
+            if (isCurrent) return; // 既に選択中の場合は何もしない
+            GM_setValue(CONFIG_FORMAT_KEY, f.id);
+            alert(`ファイル名書式を「${f.label}」に変更しました。\nページをリロードして反映します。`);
+            location.reload();
+        });
     });
 
     // 1. 現在チャンネルのログを CSV 出力
