@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.6.2
+// @version      3.6.3
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -376,6 +376,7 @@
             onerror: (err) => {
                 console.error('[Auto-Renamer] GM_download エラー:', err);
                 setStatus('❌ エラー');
+                showDownloadErrorHint(err);
                 const flatName = pathInfo.relativePath.replace(/\//g, '_');
                 GM_download({
                     url: url,
@@ -384,6 +385,39 @@
                 });
             }
         });
+    }
+
+    // ダウンロード失敗時の原因別ヒント表示（同一セッションで1回のみ）
+    let downloadErrorHintShown = false;
+    function showDownloadErrorHint(err) {
+        if (downloadErrorHintShown) return;
+        downloadErrorHintShown = true;
+
+        const code = (err && err.error) ? err.error : 'unknown';
+        let hint;
+        switch (code) {
+            case 'not_permitted':
+                hint = 'ダウンロード権限が許可されていません。\n' +
+                       'Tampermonkey 5.5 以降では、初回保存時に表示されるダウンロード権限の要求を「許可」する必要があります。';
+                break;
+            case 'not_enabled':
+            case 'not_whitelisted':
+                hint = 'Tampermonkey のダウンロード設定によりブロックされました。\n' +
+                       '設定 → ダウンロード BETA の「Download Mode」が「Browser API」になっているか、\n' +
+                       'ファイル拡張子のホワイトリストを確認してください。';
+                break;
+            case 'not_supported':
+                hint = '現在の Download Mode ではフォルダ付き保存がサポートされていません。\n' +
+                       'Download Mode を「Native」から「Browser API」に変更してください。';
+                break;
+            default:
+                hint = 'ネットワークエラー、またはブラウザ側でダウンロードが拒否された可能性があります。';
+        }
+
+        alert(`[discord-oneclick] 階層フォルダでの保存に失敗しました（${code}）。\n\n` +
+              `${hint}\n\n` +
+              `※ フォルダ区切りを「_」に置き換えたファイル名で保存を再試行します。\n` +
+              `詳細は README の「初回設定」を参照してください。`);
     }
 
     function applyDownloadedStyle(btn) {
