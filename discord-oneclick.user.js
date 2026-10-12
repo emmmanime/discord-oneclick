@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.6.3
+// @version      3.7.0
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -62,18 +62,31 @@
                 .replace(/[\u200B\u200C\u200D\uFEFF\uFE0E\uFE0F]/g, '') // 不可視ゴミ（異体字セレクタ含む） -> 削除
                 .replace(/[\u2018\u2019\u201A\u201B]/g, "'");     // カーリークォート -> '
 
-            // Step 5: 記号ファミリー集約（人間味・ニュアンスの救出）
+            // Step 5: 記号ファミリー集約（MangaMeeya・古のWin32救出）
             s = s
-                .replace(/\u2764\uFE0F?|[\uD83D][\uDC93-\uDC9F]|[\uD83E][\uDE0D-\uDE0F]|\u2661/g, '♥') // ハート系
-                .replace(/\u2B50|\u2728|[\uD83C][\uDF1F\uDF20]|[\uD83D][\uDCAB]|\u2606/g, '★')       // 星・キラキラ系
-                .replace(/[\uD83C][\uDFB5\uDFB6\uDFBC]|\u266B/g, '♪');                                 // 音符系
+                // ハート系絵文字 -> 「♥」へ集約（※明示的な白ハート \u2661 はそのまま保持）
+                .replace(/\u2764\uFE0F?|[\uD83D][\uDC93-\uDC9F]|[\uD83E][\uDD70\uDE0D-\uDE0F\uDFE1]|[\uD83E][\uDE75-\uDE77]/g, '♥')
+                // 三角系絵文字 -> 「▲」「▼」
+                .replace(/[\uD83D]\uDD3A/g, '▲')
+                .replace(/[\uD83D]\uDD3B/g, '▼')
+                // ダイヤ系絵文字 -> 「◆」「◇」
+                .replace(/[\uD83D][\uDD36\uDD37]/g, '◆')
+                .replace(/[\uD83D][\uDD38\uDD39]/g, '◇')
+                // 丸系絵文字 -> 「●」「○」
+                .replace(/\u26AB|[\uD83D][\uDD34\uDD35]|[\uD83E][\uDFE0-\uDFE4]/g, '●')
+                .replace(/\u26AA/g, '○')
+                // 星・キラキラ系
+                .replace(/\u2B50|\u2728|[\uD83C][\uDF1F\uDF20]|[\uD83D][\uDCAB]|\u2606/g, '★')
+                // 音符系
+                .replace(/[\uD83C][\uDFB5\uDFB6\uDFBC]|\u266B/g, '♪');
 
             // Step 6: サロゲートペア絵文字（2文字組）を単一の「■」へ集約
             s = s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '■');
 
             // Step 7: 基本領域の特殊絵文字記号（⚓, ☕, ⚡ 等）を安全に豆腐化
-            // ※ 丸数字 (\u2460-\u24FF) や 標準幾何学記号 (\u25A0-\u25FF: ○●▲▼■□ 等) は絶対に巻き込まない！
-            s = s.replace(/[\u2600-\u2604\u2607-\u265F\u2662-\u2669\u266C-\u26FF\u2700-\u2775\u2790-\u27BF]/g, '■');
+            // ※ 丸数字 (\u2460-\u24FF) や 標準幾何学記号 (\u25A0-\u25FF: ○●▲▼■□ 等)、
+            //    古のWin32救済記号（♥\u2665, ♡\u2661, ♬\u266C, ♠\u2660, ♣\u2663 等）は安全に通過させる！
+            s = s.replace(/[\u2600-\u2604\u2607-\u265F\u2662\u2664\u2666-\u2668\u266E-\u26FF\u2700-\u2775\u2790-\u27BF]/g, '■');
         }
 
         // Step 8: Windowsファイル名禁止文字・パス区切りの安全な全角化
