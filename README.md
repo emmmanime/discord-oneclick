@@ -1,5 +1,7 @@
 # discord-oneclick
 
+**Version 3.7.0 (2026-10-13)**
+
 DiscordのWebブラウザ画面上から、元画像やメディア情報を一括抽出・管理するためのTampermonkey UserScriptです。
 
 ## 主な機能
