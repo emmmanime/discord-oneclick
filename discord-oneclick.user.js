@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.7.2
+// @version      3.7.3
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -64,8 +64,10 @@
 
             // Step 5: 記号ファミリー集約（MangaMeeya・古のWin32救出）
             s = s
-                // ハート系絵文字 -> 「♥」へ集約（※明示的な白ハート \u2661 はそのまま保持）
-                .replace(/\u2764\uFE0F?|[\uD83D][\uDC93-\uDC9F]|[\uD83E][\uDD70\uDE0D-\uDE0F\uDFE1]|[\uD83E][\uDE75-\uDE77]/g, '♥')
+                // ハート系絵文字 および Unicode黒ハート(♥) -> Shift_JIS外字黒ハート「\uE0A5」(0xF0E6)へ集約
+                .replace(/\u2665|\u2764\uFE0F?|[\uD83D][\uDC93-\uDC9F]|[\uD83E][\uDD70\uDE0D-\uDE0F\uDFE1]|[\uD83E][\uDE75-\uDE77]/g, '\uE0A5')
+                // Unicode白ハート(♡) -> Shift_JIS外字白ハート「\uE006」(0xF046)へ変換
+                .replace(/\u2661/g, '\uE006')
                 // 三角系絵文字 -> 「▲」「▼」
                 .replace(/[\uD83D]\uDD3A/g, '▲')
                 .replace(/[\uD83D]\uDD3B/g, '▼')
