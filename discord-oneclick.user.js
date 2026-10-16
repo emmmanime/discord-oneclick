@@ -99,12 +99,37 @@
     function sanitizeName(name) {
         if (!name) return '';
 
-        // Step 1: macOS濁点結合 & ダイアクリティカルマーク除去 (pokémon -> pokemon 等)
-        // ※ NFD分解 -> U+0300〜U+036F(ラテンアクセント)のみ消去 -> NFC結合 (濁点・半濁点は完全保護・1文字合体)
-        let s = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+        // Step 1: macOS濁点結合 & 西欧ダイアクリティカルマーク除去・特殊ラテン文字展開 (pokémon -> pokemon, ß -> ss, æ -> ae, ø -> o 等)
+        // ※ NFDで分解されない西欧合字・ストローク付き文字を展開後、NFD分解 -> U+0300〜U+036Fのみ消去 -> NFC結合 (日本語の濁点・半濁点は完全保護)
+        let s = name
+            .replace(/\u00DF/g, 'ss')
+            .replace(/\u1E9E/g, 'SS')
+            .replace(/\u00C6/g, 'AE')
+            .replace(/\u00E6/g, 'ae')
+            .replace(/\u0152/g, 'OE')
+            .replace(/\u0153/g, 'oe')
+            .replace(/\u00D8/g, 'O')
+            .replace(/\u00F8/g, 'o')
+            .replace(/\u0141/g, 'L')
+            .replace(/\u0142/g, 'l')
+            .replace(/[\u0110\u00D0]/g, 'D')
+            .replace(/[\u0111\u00F0]/g, 'd')
+            .replace(/\u00DE/g, 'TH')
+            .replace(/\u00FE/g, 'th')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .normalize('NFC');
 
-        // Step 2: 波ダッシュ問題是正（\u301C -> \uFF5E 全角チルダへ）
-        s = s.replace(/\u301C/g, '\uFF5E');
+        // Step 1.5: macOS / PDF由来の康熙部首 (U+2F00-U+2FD5) ・ CJK部首補助 (U+2E80-U+2EFF) を標準JIS漢字へ正規化救出 (⼀ -> 一 等)
+        s = s.replace(/[\u2E80-\u2FD5]/g, ch => ch.normalize('NFKC'));
+
+        // Step 2: 波ダッシュ・JIS/CP932マッピング不一致記号の是正
+        s = s
+            .replace(/[\u301C\u3030]/g, '\uFF5E') // 〜 (WAVE DASH), 〰 (WAVY DASH) -> ～ (全角チルダ 0x8160)
+            .replace(/\u2016/g, '\u2225')         // ‖ -> ∥ (双柱 0x8161)
+            .replace(/\u00A2/g, '\uFFE0')         // ¢ -> ￠ (セント 0x8191)
+            .replace(/\u00A3/g, '\uFFE1')         // £ -> ￡ (ポンド 0x8192)
+            .replace(/\u00AC/g, '\uFFE2');        // ¬ -> ￢ (ノット 0x81CA)
 
         // Step 3: 丸数字の置換・展開
         s = s.replace(/[\u2776-\u277F]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x2776 + 0x2460)); // ❶-❿ -> ①-⑩
@@ -114,11 +139,11 @@
 
         // クレンジングが有効な場合のみ「Win32 / MangaMeeya (CP932) 完全互換処理」を実行
         if (isCleansingEnabled()) {
-            // Step 4: macOS地雷文字の除去
+            // Step 4: macOS地雷文字・全半角ダッシュ・ハイフン類の完全標準化
             s = s
-                .replace(/[\u2013\u2014\u2015\u2212]/g, '-')        // ダッシュ類 -> 半角ハイフン
+                .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u2043\uFE58\uFE63\u2E3A\u2E3B\u30A0]/g, '-') // 全13種のダッシュ・ハイフン・マイナス類 -> 半角ハイフン
                 .replace(/[\u00A0\u2002\u2003\u2009\u202F]/g, ' ') // 特殊スペース -> 半角空白
-                .replace(/[\u200B\u200C\u200D\uFEFF\uFE0E\uFE0F]/g, '') // 不可視ゴミ（異体字セレクタ含む） -> 削除
+                .replace(/[\u00AD\u200B\u200C\u200D\uFEFF\uFE0E\uFE0F]/g, '') // 不可視ゴミ（ソフトハイフン・異体字セレクタ含む） -> 削除
                 .replace(/[\u2018\u2019\u201A\u201B]/g, "'");     // カーリークォート -> '
 
             // Step 5: かな・記号ファミリー集約（MangaMeeya・古のWin32救出：変換先はすべて純粋なCP932文字のみ）
