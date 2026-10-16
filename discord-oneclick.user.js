@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      4.1.0
+// @version      4.2.0
 // @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、CP932(Shift_JIS)完全準拠クレンジング(外字ハート/かな救出/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
@@ -141,7 +141,8 @@
         if (isCleansingEnabled()) {
             // Step 4: macOS地雷文字・全半角ダッシュ・ハイフン類の完全標準化
             s = s
-                .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u2043\uFE58\uFE63\u2E3A\u2E3B\u30A0]/g, '-') // 全13種のダッシュ・ハイフン・マイナス類 -> 半角ハイフン
+                .replace(/[\u2010\u2014\u2015\u2212\uFE58\uFE63\u2E3A\u2E3B\u30A0]/g, '\uFF0D') // 全角系ダッシュ・ハイフン・マイナス類(9種) -> Windows全角ハイフンマイナス '－' (0x817C)
+                .replace(/[\u2011\u2012\u2013\u2043]/g, '-')        // 半角・欧文系ハイフン・ENダッシュ類(4種) -> 半角ハイフン '-' (0x2D)
                 .replace(/[\u00A0\u2002\u2003\u2009\u202F]/g, ' ') // 特殊スペース -> 半角空白
                 .replace(/[\u00AD\u200B\u200C\u200D\uFEFF\uFE0E\uFE0F]/g, '') // 不可視ゴミ（ソフトハイフン・異体字セレクタ含む） -> 削除
                 .replace(/[\u2018\u2019\u201A\u201B]/g, "'");     // カーリークォート -> '
