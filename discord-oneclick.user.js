@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      3.7.4
-// @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、Shift_JISクレンジング(ダイアクリティカル除去/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
+// @version      4.0.0
+// @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、CP932(Shift_JIS)完全準拠クレンジング(外字ハート/かな救出/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
 // @author       You
 // @match        https://discord.com/*
 // @match        https://ptb.discord.com/*
@@ -22,7 +22,66 @@
     const BASE_FOLDER = 'Discord';
     const STORAGE_KEY = 'discord_download_history_v1';
     const CONFIG_CLEANSING_KEY = 'config_enable_cleansing';
-    const CONFIG_FORMAT_KEY = 'config_filename_format'; // 1: Prefix, 2: Suffix
+    const CONFIG_FORMAT_KEY = 'config_filename_format'; // 1: Prefix, 2: Suffix, 3: Original only
+
+    /**
+     * Windows-31J (CP932 / Shift_JIS) 完全準拠の文字セットを構築（初回のみ遅延生成）
+     * name2win.exe の Encoding.GetEncoding(932) と 100% 同一の判定を実現
+     */
+    let cp932ValidSet = null;
+    function getCp932ValidSet() {
+        if (cp932ValidSet) return cp932ValidSet;
+        const set = new Set();
+
+        // 1. ASCII印字可能文字 (0x20 - 0x7E)
+        for (let c = 0x20; c <= 0x7E; c++) {
+            set.add(String.fromCharCode(c));
+        }
+        // 2. 半角カタカナ (0xA1 - 0xDF -> U+FF61 - U+FF9F)
+        for (let c = 0xFF61; c <= 0xFF9F; c++) {
+            set.add(String.fromCharCode(c));
+        }
+        // 3. CP932 外字領域 (0xF040 - 0xF9FC -> U+E000 - U+E757 全1,880文字)
+        for (let c = 0xE000; c <= 0xE757; c++) {
+            set.add(String.fromCharCode(c));
+        }
+        // 4. 2バイト Shift_JIS 領域 (JIS第1・第2水準、NEC特殊文字、IBM拡張漢字)
+        try {
+            const decoder = new TextDecoder('shift-jis', { fatal: true });
+            const buf = new Uint8Array(2);
+            const leads = [
+                [0x81, 0x9F],
+                [0xE0, 0xEF],
+                [0xFA, 0xFC]
+            ];
+            for (const [lStart, lEnd] of leads) {
+                for (let lead = lStart; lead <= lEnd; lead++) {
+                    buf[0] = lead;
+                    for (let trail = 0x40; trail <= 0xFC; trail++) {
+                        if (trail === 0x7F) continue;
+                        buf[1] = trail;
+                        try {
+                            const ch = decoder.decode(buf);
+                            if (ch.length === 1) set.add(ch);
+                        } catch (_) {
+                            // 未定義の2バイト組み合わせはスキップ
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[Discord OneClick] TextDecoder shift-jis initialization warning:', e);
+        }
+
+        // 5. WHATWG shift-jis と Microsoft CP932 のマッピング差異7文字を Windows CP932 側に完全一致させる
+        // CP932で有効な文字を追加
+        ['\u2015', '\uFF5E', '\u2225', '\uFF0D', '\uFFE0', '\uFFE1', '\uFFE2'].forEach(ch => set.add(ch));
+        // CP932では 0x3F (?) になる非対応文字を除外
+        ['\u301C', '\u2016', '\u2212', '\u00A2', '\u00A3', '\u00AC'].forEach(ch => set.delete(ch));
+
+        cp932ValidSet = set;
+        return cp932ValidSet;
+    }
 
     // 古いWin32アプリ互換ファイル名化機能の有効/無効判定（デフォルト: true）
     function isCleansingEnabled() {
@@ -35,7 +94,7 @@
     }
 
     /**
-     * 文字列サニタイズ処理（古いWin32アプリ互換ファイル名化）
+     * 文字列サニタイズ処理（古いWin32アプリ互換ファイル名化 - CP932完全準拠）
      */
     function sanitizeName(name) {
         if (!name) return '';
@@ -53,7 +112,7 @@
         s = s.replace(/[\u3251-\u325F]/g, ch => `(${ch.charCodeAt(0) - 0x3251 + 21})`); // ㉑-㉟ -> (21)-(35)
         s = s.replace(/[\u32B1-\u32BF]/g, ch => `(${ch.charCodeAt(0) - 0x32B1 + 36})`); // ㊱-㊿ -> (36)-(50)
 
-        // クレンジングが有効な場合のみ「Win32 / Mangameeya互換処理」を実行
+        // クレンジングが有効な場合のみ「Win32 / MangaMeeya (CP932) 完全互換処理」を実行
         if (isCleansingEnabled()) {
             // Step 4: macOS地雷文字の除去
             s = s
@@ -62,15 +121,25 @@
                 .replace(/[\u200B\u200C\u200D\uFEFF\uFE0E\uFE0F]/g, '') // 不可視ゴミ（異体字セレクタ含む） -> 削除
                 .replace(/[\u2018\u2019\u201A\u201B]/g, "'");     // カーリークォート -> '
 
-            // Step 5: 記号ファミリー集約（MangaMeeya・古のWin32救出：変換先はすべて純粋なCP932文字のみ）
+            // Step 5: かな・記号ファミリー集約（MangaMeeya・古のWin32救出：変換先はすべて純粋なCP932文字のみ）
             s = s
+                // CP932非対応のひらがな・カタカナ（ゔ, ゕ, ゖ, ヷ, ヸ, ヹ, ヺ）をCP932対応カナへ救出
+                .replace(/\u3094/g, 'ヴ')
+                .replace(/\u3095/g, 'ヵ')
+                .replace(/\u3096/g, 'ヶ')
+                .replace(/\u30F7/g, 'ヴァ')
+                .replace(/\u30F8/g, 'ヴィ')
+                .replace(/\u30F9/g, 'ヴェ')
+                .replace(/\u30FA/g, 'ヴォ')
                 // ハート系絵文字 および Unicode黒ハート(♥) -> Shift_JIS外字黒ハート「\uE0A5」(0xF0E6)へ集約
                 .replace(/\u2665|\u2764\uFE0F?|[\uD83D][\uDC93-\uDC9F]|[\uD83E][\uDD70\uDE0D-\uDE0F\uDFE1]|[\uD83E][\uDE75-\uDE77]/g, '\uE0A5')
                 // Unicode白ハート(♡) -> Shift_JIS外字白ハート「\uE006」(0xF046)へ変換
                 .replace(/\u2661/g, '\uE006')
-                // 三角系絵文字 -> 「▲」「▼」 (CP932: 0x81A3, 0x81A5)
-                .replace(/[\uD83D]\uDD3A/g, '▲')
-                .replace(/[\uD83D]\uDD3B/g, '▼')
+                // 三角系絵文字・右左小三角 -> 「▲」「△」「▼」「▽」 (CP932: 0x81A3, 0x81A2, 0x81A5, 0x81A4)
+                .replace(/[\uD83D]\uDD3A|[\u25B4\u25B6\u25B8\u25BA]/g, '▲')
+                .replace(/[\u25B5\u25B7\u25B9\u25BB]/g, '△')
+                .replace(/[\uD83D]\uDD3B|[\u25BE\u25C0\u25C2\u25C4]/g, '▼')
+                .replace(/[\u25BF\u25C1\u25C3\u25C5]/g, '▽')
                 // ダイヤ系絵文字 -> 「◆」「◇」 (CP932: 0x819F, 0x819E)
                 .replace(/[\uD83D][\uDD36\uDD37]/g, '◆')
                 .replace(/[\uD83D][\uDD38\uDD39]/g, '◇')
@@ -85,12 +154,16 @@
             // Step 6: サロゲートペア絵文字（2文字組）を単一の「■」へ集約
             s = s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '■');
 
-            // Step 7: 基本多言語面 (BMP) の非CP932記号（♠, ♤, ♣, ♧, ✓, ✔, ⚓, ☕, ⚡ 等）を厳密に「■」化
-            // ※ U+2300〜U+27BF, U+2B00〜U+2BFF のうち、CP932に実在する以下の文字のみを通過させる：
-            //    ⌒(\u2312), ①-⑳(\u2460-\u2473), 罫線(\u2500-\u254B),
-            //    ■□(\u25A0-\u25A1), ▲△(\u25B2-\u25B3), ▼▽(\u25BC-\u25BD), ◆◇(\u25C6-\u25C7), ○(\u25CB), ◎●(\u25CE-\u25CF), ◯(\u25EF),
-            //    ★☆(\u2605-\u2606), ♀(\u2640), ♂(\u2642), ♪(\u266A), ♭(\u266D), ♯(\u266F)
-            s = s.replace(/[\u2300-\u2311\u2313-\u23FF\u2474-\u24FF\u254C-\u259F\u25A2-\u25B1\u25B4-\u25BB\u25BE-\u25C5\u25C8-\u25CA\u25CC-\u25CD\u25D0-\u25EE\u25F0-\u2604\u2607-\u263F\u2641\u2643-\u2669\u266B-\u266C\u266E\u2670-\u27BF\u2B00-\u2BFF]/g, '■');
+            // Step 7: CP932 (Windows-31J) 全文字セットによる100%厳密検証
+            // （簡体字・繁体字・ハングル・非対応BMP記号など、CP932外のあらゆる文字を漏れなく単一「■」へ変換）
+            const validSet = getCp932ValidSet();
+            let out = '';
+            for (let i = 0; i < s.length; i++) {
+                const c = s[i];
+                if (c.charCodeAt(0) < 32) continue;
+                out += validSet.has(c) ? c : '■';
+            }
+            s = out;
         }
 
         // Step 8: Windowsファイル名禁止文字・パス区切りの安全な全角化
