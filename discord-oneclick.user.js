@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Discord Attachment Auto-Renamer with History & Cleansing
 // @namespace    https://local.discord.tools/
-// @version      4.2.0
-// @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、CP932(Shift_JIS)完全準拠クレンジング(外字ハート/かな救出/波ダッシュ/丸数字/禁則文字全角化)、重複防止、履歴DB機能。
+// @version      4.3.0
+// @description  Web版Discord添付ファイル階層保存。先頭画像フロートボタン、重複防止、履歴DB機能。オプションで古のWin32(MangaMeeya)向けCP932クレンジングも利用可能。
 // @author       You
 // @match        https://discord.com/*
 // @match        https://ptb.discord.com/*
@@ -83,9 +83,9 @@
         return cp932ValidSet;
     }
 
-    // 古いWin32アプリ互換ファイル名化機能の有効/無効判定（デフォルト: true）
+    // 古いWin32アプリ互換ファイル名化機能の有効/無効判定（デフォルト: false ※MangaMeYeah!等のUnicode対応環境を標準化）
     function isCleansingEnabled() {
-        return GM_getValue(CONFIG_CLEANSING_KEY, true);
+        return GM_getValue(CONFIG_CLEANSING_KEY, false);
     }
 
     // ファイル名書式の取得（デフォルト: 1）
